@@ -1,77 +1,73 @@
 using UnityEngine;
 
-// TODO: Consider the benefits of refactoring to namespace Movement
 namespace Character
 {
-    public class PhysicsMovement : MovementController
+    public class PhysicsController : MovementController
     {
-        [SerializeField] float drag = 0.5f;
-        [SerializeField] float rotationSpeed = 0.1f;
-        
+        [Header("Physics & Braking")]
+        [SerializeField] private float brakingForce = 15f;
+        [SerializeField] private float rotationSpeed = 720f;
+
         protected override void Start()
         {
             base.Start();
-            rb.linearDamping = drag;
-        }
-
-        public override float GetHorizontalSpeedPercent()
-        {
-            Vector3 horizontalVelocity = new Vector3(rb.linearVelocity.x, 0f, rb.linearVelocity.z);
-            return Mathf.Clamp01(horizontalVelocity.magnitude / maxVelocity);;
-        }
-
-        public override void Jump() 
-        { 
-            // TODO: integrate jump support from week 2-3    
+            
+            // Standard Physics Setup
+            rb.linearDamping = 2f; 
+            rb.freezeRotation = true; // Prevents the capsule from tipping over
+            
+            // CRITICAL: Set Interpolate to 'Interpolate' for smooth camera following
+            rb.interpolation = RigidbodyInterpolation.Interpolate; 
         }
 
         protected override void FixedUpdate()
         {
-            base.FixedUpdate(); // TODO: remove base.FixedUpdate() when starting your integration
-            ApplyMovement();
+            // If we have movement input, move. Otherwise, apply brakes.
+            if (moveInput.sqrMagnitude > 0.01f)
+            {
+                ApplyMovement();
+                ApplyRotation();
+            }
+            else
+            {
+                ApplyBraking();
+            }
+
             ClampVelocity();
-            ApplyRotation();
-            ApplyJump();
         }
-        
+
         void ApplyMovement()
         {
-            // TODO integrate your physics from week 2-3 
-        }
-
-        void ApplyJump()
-        {
-            // TODO integrate your jump logic from week 2-3 
-        }
-
-        // TODO integrate collision support from week 2-3 
-        
-        void ClampVelocity()
-        {
-            // Clamp horizontal velocity while preserving vertical (for jumping/falling)
-            Vector3 horizontalVelocity = new Vector3(rb.linearVelocity.x, 0f, rb.linearVelocity.z);
-            
-            if (horizontalVelocity.magnitude > maxVelocity)
-            {
-                horizontalVelocity = horizontalVelocity.normalized * maxVelocity;
-                rb.linearVelocity = new Vector3(horizontalVelocity.x, rb.linearVelocity.y, horizontalVelocity.z);
-            }
+            // Calculate direction once using the Camera
+            Vector3 moveDir = GetCameraRelativeDirection(moveInput);
+            rb.AddForce(moveDir * acceleration, ForceMode.Acceleration);
         }
 
         void ApplyRotation()
         {
-            Vector3 direction = new Vector3(rb.linearVelocity.x, 0f, rb.linearVelocity.z);
-            if (direction.magnitude > 0.5f)
+            Vector3 moveDir = GetCameraRelativeDirection(moveInput);
+            if (moveDir.sqrMagnitude > 0.01f)
             {
-                // 1. Calculate the target rotation (where we WANT to look)
-                Quaternion targetRotation = Quaternion.LookRotation(direction.normalized);
+                Quaternion targetRotation = Quaternion.LookRotation(moveDir, Vector3.up);
+                transform.rotation = Quaternion.RotateTowards(transform.rotation, targetRotation, rotationSpeed * Time.fixedDeltaTime);
+            }
+        }
 
-                // 2. Smoothly rotate from our current rotation toward the target
-                transform.rotation = Quaternion.Slerp(
-                    transform.rotation, 
-                    targetRotation, 
-                    rotationSpeed * Time.fixedDeltaTime
-                );
+        void ApplyBraking()
+        {
+            // Counter-force to stop the "drifting away" behavior
+            Vector2 horizontalVel = new Vector2(rb.linearVelocity.x, rb.linearVelocity.z);
+            Vector3 counterForce = new Vector3(-horizontalVel.x, 0, -horizontalVel.y) * brakingForce;
+            rb.AddForce(counterForce, ForceMode.Acceleration);
+        }
+
+        void ClampVelocity()
+        {
+            Vector3 horizontalVel = new Vector3(rb.linearVelocity.x, 0, rb.linearVelocity.z);
+            if (horizontalVel.magnitude > maxVelocity)
+            {
+                horizontalVel = horizontalVel.normalized * maxVelocity;
+                rb.linearVelocity = new Vector3(horizontalVel.x, rb.linearVelocity.y, horizontalVel.z);
             }
         }
     }

@@ -1,28 +1,32 @@
-using Character;
 using UnityEngine;
 
-namespace Character {
+namespace Character
+{
     public class AnimatedController : MonoBehaviour
     {
-        [SerializeField] float moveSpeed; // useful to observe for debugging
-        MovementController moveController;
-        Animator animator;
-        protected Animator Animator { get { return animator; } }
+        [Header("Settings")]
+        [SerializeField] private Animator animator;
+        [SerializeField] private Rigidbody rb;
+        [SerializeField] private float maxSpeed = 5f;
+
         void Start()
         {
-            animator = GetComponent<Animator>();
-            moveController = GetComponent<MovementController>();
-        }
-
-        public void SetTrigger(string name)
-        {
-            animator.SetTrigger(name);
+            if (animator == null) animator = GetComponent<Animator>();
+            if (rb == null) rb = GetComponentInParent<Rigidbody>();
         }
 
         void Update()
         {
-            moveSpeed = moveController.GetHorizontalSpeedPercent();
-            animator.SetFloat("Speed", moveSpeed);
+            if (animator == null || rb == null) return;
+
+            // Simple movement speed update for the Blend Tree
+            float speed = rb.linearVelocity.magnitude;
+            animator.SetFloat("Speed", speed / maxSpeed, 0.1f, Time.deltaTime);
+        }
+
+        public void SetTrigger(string triggerName)
+        {
+            if (animator != null) animator.SetTrigger(triggerName);
         }
     }
 }

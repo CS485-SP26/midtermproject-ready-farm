@@ -68,15 +68,11 @@ namespace Farming
             }
         }
 
-        // ***************************************************************** //
-        // Below this line is code to suppor the Unity Editor (Advanced)
-        // Please feel free to disregard everything below this
-        // ***************************************************************** //
         void OnValidate()
         {
             #if UNITY_EDITOR
             EditorApplication.delayCall += () => {
-                if (this == null) return; // Guard against the object being deleted
+                if (this == null) return; 
                 ValidateGrid();
             };
             #endif

@@ -1,50 +1,79 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 using Farming;
+using System.Collections;
 
-namespace Character 
+namespace Character
 {
-    [RequireComponent(typeof(PlayerInput))] // Input is required and we don't store a reference
+    [RequireComponent(typeof(PlayerInput))]
     public class PlayerController : MonoBehaviour
     {
         [SerializeField] private TileSelector tileSelector;
-        MovementController moveController;
-        AnimatedController animatedController;
+        [SerializeField] private FarmingManager farmingManager;
+
+        [Header("Tool Models")]
+        [SerializeField] private GameObject hoeModel;        
+        [SerializeField] private GameObject wateringCanModel; 
+
+        private MovementController moveController;
+        private Coroutine hideToolCoroutine;
 
         void Start()
         {
             moveController = GetComponent<MovementController>();
-            animatedController = GetComponent<AnimatedController>();
-
-            // TODO: Consider Debug.Assert vs RequireComponent(typeof(...))
-            Debug.Assert(animatedController, "PlayerController requires an animatedController");
-            Debug.Assert(moveController, "PlayerController requires a MovementController");
-            Debug.Assert(tileSelector, "PlayerController requires a TileSelector.");
+            // Baseline: Hide everything at the start
+            SetTool(0); 
         }
+
+        // Master function for rendering/derendering tools
+        public void SetTool(int toolIndex)
+        {
+            // Cancel any active hide timer so tools don't flicker
+            if (hideToolCoroutine != null) StopCoroutine(hideToolCoroutine);
+
+            
+            if (hoeModel != null) hoeModel.SetActive(toolIndex == 1);
+            if (wateringCanModel != null) wateringCanModel.SetActive(toolIndex == 2);
+
+            
+            if (toolIndex != 0)
+            {
+                hideToolCoroutine = StartCoroutine(HideToolsAfterDelay(5.5f));
+            }
+        }
+
+        private IEnumerator HideToolsAfterDelay(float delay)
+        {
+            yield return new WaitForSeconds(delay);
+            if (hoeModel != null) hoeModel.SetActive(false);
+            if (wateringCanModel != null) wateringCanModel.SetActive(false);
+        }
+
         public void OnMove(InputValue inputValue)
         {
             Vector2 inputVector = inputValue.Get<Vector2>();
-            moveController.Move(inputVector);
-        }
+            
+            // If the player starts walking, instantly hide tools
+            if (inputVector.magnitude > 0.1f) SetTool(0);
 
-        public void OnJump(InputValue inputValue)
-        {
-            moveController.Jump();
+            if (moveController) moveController.Move(inputVector);
         }
 
         public void OnInteract(InputValue value)
         {
-            FarmTile tile = tileSelector.GetSelectedTile();
-            if (tile != null)
+            if (!value.isPressed) return;
+
+            FarmTile tile = tileSelector ? tileSelector.GetSelectedTile() : null;
+            if (tile != null && farmingManager != null)
             {
-                tile.Interact(); // updates the condition, play the anim after
-                switch (tile.GetCondition)
-                {
-                    case FarmTile.Condition.Tilled: animatedController.SetTrigger("Till"); break;
-                    case FarmTile.Condition.Watered: animatedController.SetTrigger("Water"); break;
-                    default: break;
-                }
+                // This triggers the animations that call SetTool(1) or SetTool(2)
+                farmingManager.InteractWithTile(tile);
             }
+        }
+
+        public void OnJump(InputValue inputValue)
+        {
+            if (moveController && inputValue.isPressed) moveController.Jump();
         }
     }
 }

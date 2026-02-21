@@ -1,21 +1,22 @@
-using System;
 using UnityEngine;
 
-namespace Character 
+public class CameraFollow : MonoBehaviour
 {
-    public class CameraFollow : MonoBehaviour
+    public Transform target; // Drag X Bot here
+    public Vector3 offset = new Vector3(0, 2, -3); // Adjust Z for closeness
+    public float smoothness = 0.125f;
+
+    void LateUpdate()
     {
-        [SerializeField] public GameObject player;
-        [SerializeField] private Vector3 offset = new(0f, 0f, -3f);
+        if (target == null) return;
 
-        void Start()
-        {
-            Debug.Assert(player, "CameraFollow requires a player (GameObject).");
-        }
+        // Calculate desired position based on target and offset
+        Vector3 desiredPosition = target.position + offset;
+        
+        // Smoothly move the camera
+        transform.position = Vector3.Lerp(transform.position, desiredPosition, smoothness);
 
-        void LateUpdate()
-        {
-            transform.position = player.transform.position + offset;         
-        }
+        // Keep the camera looking at the player
+        transform.LookAt(target.position + Vector3.up);
     }
 }

@@ -1,12 +1,16 @@
 using UnityEngine;
 using Farming;
 
-namespace Character 
+namespace Character
 {
-    public class TileSelector : MonoBehaviour
+    public abstract class TileSelector : MonoBehaviour
     {
-        [SerializeField] protected FarmTile activeTile; // good for debugging
-        public FarmTile GetSelectedTile() { return activeTile; }
+        [SerializeField] protected FarmTile activeTile;
+
+        public FarmTile GetSelectedTile() => activeTile;
+
+        // Child classes provide a selection method
+        public abstract bool TryGetTile(out FarmTile tile);
 
         protected void SetActiveTile(FarmTile tile)
         {
@@ -16,6 +20,14 @@ namespace Character
                 activeTile = tile;
                 activeTile?.SetHighlight(true);
             }
+        }
+
+        protected virtual void Update()
+        {
+            if (TryGetTile(out FarmTile tile))
+                SetActiveTile(tile);
+            else
+                SetActiveTile(null);
         }
     }
 }

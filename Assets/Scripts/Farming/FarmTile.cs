@@ -24,7 +24,7 @@ namespace Farming
         List<Material> materials = new List<Material>();
 
         private int daysSinceLastInteraction = 0;
-        public FarmTile.Condition GetCondition { get { return tileCondition; } } // TODO: Consider what the set would do?
+        public FarmTile.Condition GetCondition { get { return tileCondition; } }
 
         void Start()
         {

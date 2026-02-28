@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 96b5db2e460b0dc4bbb7e3f9a2ac8782
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences:
+  - gardenHoe: {fileID: 100004, guid: 9c8bf62167f15304cab63c2bb582915d, type: 3}
+  - waterCan: {fileID: 100006, guid: 158f788eeb1973d45933b060a20c6a8b, type: 3}
+  - waterFillImage: {instanceID: 0}
+  - winMessage: {instanceID: 0}
+  - animatedController: {instanceID: 0}
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

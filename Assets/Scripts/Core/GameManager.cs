@@ -12,6 +12,8 @@ public class GameManager : MonoBehaviour
     public float currentFunds = 100f;
     public float currentWater = 100f;
     public float maxWater = 100f;
+    public float currentEnergy = 100f;
+    public float maxEnergy = 100f;
     public int seedCount = 5;
 
     // ===== Day persistence (NEW) =====

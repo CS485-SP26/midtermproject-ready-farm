@@ -12,6 +12,7 @@ namespace Farming
         
         [Header("UI & Feedback")]
         [SerializeField] private Image waterFillImage;
+        [SerializeField] private Image energyFillImage;
         [SerializeField] private GameObject winMessage; 
 
         [Header("Durations")]
@@ -30,6 +31,7 @@ namespace Farming
         private void Update()
         {
             UpdateWaterUI();
+            UpdateEnergyUI();
             CheckWinCondition();
         }
 
@@ -41,11 +43,20 @@ namespace Farming
             FarmTile.Condition condition = tile.GetCondition;
 
             if (condition == FarmTile.Condition.Grass)
-            {
-                gardenHoe.SetActive(true);
-                animatedController.SetTrigger("Till");
-                tile.Interact();
-                Invoke(nameof(StopFarmingAction), hoeDuration);
+            {   
+                if(GameManager.Instance.currentEnergy >= 10f)
+                {
+                    GameManager.Instance.currentEnergy -= 10f;
+                
+                    gardenHoe.SetActive(true);
+                    animatedController.SetTrigger("Till");
+                    tile.Interact();
+                    Invoke(nameof(StopFarmingAction), hoeDuration);
+                }
+                else
+                {
+                    Debug.Log("Not enough energy to till the soil!");
+                }
             }
             else if (condition == FarmTile.Condition.Tilled)
             {
@@ -57,14 +68,19 @@ namespace Farming
                     tile.Interact();
                     
                     GameManager.Instance.currentWater -= 10f;
+                    UpdateWaterUI();
                     Invoke(nameof(StopFarmingAction), waterDuration);
+                }
+                else
+                {
+                    Debug.Log("Not enough water to water the soil!");
                 }
             }
         }
 
         private void CheckWinCondition()
         {
-            FarmTile[] allTiles = FindObjectsOfType<FarmTile>();
+            FarmTile[] allTiles = FindObjectsByType<FarmTile>(FindObjectsSortMode.None);
             if (allTiles.Length == 0) return;
 
             bool allWatered = true;
@@ -102,6 +118,13 @@ namespace Farming
             // Syncs the UI bar with the GameManager's persistent water level
             if (waterFillImage != null && GameManager.Instance != null)
                 waterFillImage.fillAmount = GameManager.Instance.currentWater / GameManager.Instance.maxWater;
+        }
+
+        private void UpdateEnergyUI()
+        {
+            // Syncs the UI bar with the GameManager's persistent energy level
+            if (energyFillImage != null && GameManager.Instance != null)
+                energyFillImage.fillAmount = GameManager.Instance.currentEnergy / GameManager.Instance.maxEnergy;
         }
     }
 }

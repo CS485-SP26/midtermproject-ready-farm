@@ -6,7 +6,8 @@ public class FarmUI : MonoBehaviour
 {
     public TextMeshProUGUI fundsText;
     public TextMeshProUGUI farmSeedsText; 
-    public Image waterFillImage; 
+    public Image waterFillImage;
+    public Image energyFillImage; 
 
     void Update()
     {
@@ -22,6 +23,11 @@ public class FarmUI : MonoBehaviour
             if (waterFillImage != null)
             {
                 waterFillImage.fillAmount = GameManager.Instance.currentWater / GameManager.Instance.maxWater;
+            }
+
+            if (energyFillImage != null)
+            {
+                energyFillImage.fillAmount = GameManager.Instance.currentEnergy / GameManager.Instance.maxEnergy;
             }
         }
     }

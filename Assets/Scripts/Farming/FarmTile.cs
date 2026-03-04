@@ -5,7 +5,7 @@ namespace Farming
 {
     public class FarmTile : MonoBehaviour
     {
-        public enum Condition { Grass, Tilled, Watered }
+        public enum Condition { Grass, Tilled, Watered, Planted, Withered }
 
         [SerializeField] private Condition tileCondition = Condition.Grass;
 
@@ -24,18 +24,31 @@ namespace Farming
         private readonly List<Material> materials = new List<Material>();
 
         private int daysSinceLastInteraction = 0;
+        private Plant activePlant = null; // tracked directly since plant isn't a child of this tile
 
         public Condition GetCondition => tileCondition;
         public int DaysSinceLastInteraction => daysSinceLastInteraction;
+        public Plant ActivePlant => activePlant;
 
         // ===== Minimap Icon Coloring (NEW) =====
         [Header("Minimap Colors")]
-        [SerializeField] private Color minimapGrassColor = new Color(0.10f, 0.60f, 0.10f, 1f); // keep close to your existing green
-        [SerializeField] private Color minimapTilledColor = new Color(0.78f, 0.70f, 0.45f, 1f); // tan
-        [SerializeField] private Color minimapWateredColor = new Color(0.45f, 0.25f, 0.12f, 1f); // brown (distinct from terrain)
+        [SerializeField] private Color minimapGrassColor   = new Color(0.10f, 0.60f, 0.10f, 1f);
+        [SerializeField] private Color minimapTilledColor  = new Color(0.78f, 0.70f, 0.45f, 1f);
+        [SerializeField] private Color minimapWateredColor = new Color(0.45f, 0.25f, 0.12f, 1f);
+        [SerializeField] private Color minimapPlantedColor  = new Color(0.20f, 0.80f, 0.20f, 1f);
+        [SerializeField] private Color minimapWitheredColor = new Color(0.70f, 0.70f, 0.00f, 1f);
 
-        [SerializeField] private Renderer minimapIconRenderer;   // for MeshRenderer/Renderer icons
-        [SerializeField] private SpriteRenderer minimapIconSprite; // for SpriteRenderer icons
+        [SerializeField] private Renderer minimapIconRenderer;
+        [SerializeField] private SpriteRenderer minimapIconSprite;
+
+        [Header("Planting")]
+        [SerializeField] private GameObject[] plantPrefabs;
+
+        public GameObject[] PlantPrefabs
+        {
+            get => plantPrefabs;
+            set => plantPrefabs = value;
+        }
 
         private MaterialPropertyBlock minimapMPB;
 
@@ -95,9 +108,11 @@ namespace Farming
         {
             switch (c)
             {
-                case Condition.Tilled: return minimapTilledColor;
-                case Condition.Watered: return minimapWateredColor;
-                default: return minimapGrassColor;
+                case Condition.Tilled:   return minimapTilledColor;
+                case Condition.Watered:  return minimapWateredColor;
+                case Condition.Planted:  return minimapPlantedColor;
+                case Condition.Withered: return minimapWitheredColor;
+                default:                 return minimapGrassColor;
             }
         }
 
@@ -132,13 +147,68 @@ namespace Farming
 
         public void Interact()
         {
+            // If a plant is present, forward to plant logic first
+            if (activePlant != null)
+            {
+                if (activePlant.CanHarvest)
+                    Harvest();
+                else
+                    WaterPlant();
+
+                daysSinceLastInteraction = 0;
+                return;
+            }
+
+            // No plant – interact with soil
             switch (tileCondition)
             {
-                case Condition.Grass: Till(); break;
-                case Condition.Tilled: Water(); break;
-                case Condition.Watered: Debug.Log("Ready for planting"); break;
+                case Condition.Grass:    Till();      break;
+                case Condition.Tilled:   Water();     break;
+                case Condition.Watered:  PlantSeed(); break;
+                case Condition.Withered: Till();      break;
             }
             daysSinceLastInteraction = 0;
+        }
+
+        public void PlantSeed()
+        {
+            if (plantPrefabs == null || plantPrefabs.Length == 0)
+            {
+                Debug.LogError("FarmTile: No plant prefabs assigned – drag one into the Plant Prefabs array on this tile (or on FarmTileManager).");
+                return;
+            }
+
+            GameObject prefab = plantPrefabs[Random.Range(0, plantPrefabs.Length)];
+            if (prefab == null) { Debug.LogError("FarmTile: Selected plant prefab is null."); return; }
+
+            // Parent to the tile's parent (FarmTileManager) instead of the tile itself,
+            // so the plant is never subject to the tile's non-uniform scale.
+            Transform safeParent = transform.parent != null ? transform.parent : transform;
+            var go = Instantiate(prefab, transform.position, Quaternion.identity, safeParent);
+            activePlant = go.GetComponent<Plant>();
+            if (activePlant != null) activePlant.BeginGrowing();
+            tileCondition = Condition.Planted;
+            daysSinceLastInteraction = 0;
+            UpdateVisual();
+        }
+
+        public void WaterPlant()
+        {
+            tileCondition = Condition.Watered;
+            daysSinceLastInteraction = 0;
+            UpdateVisual();
+            waterAudio?.Play();
+        }
+
+        public void Harvest()
+        {
+            if (activePlant != null)
+            {
+                Destroy(activePlant.gameObject);
+                activePlant = null;
+            }
+            tileCondition = Condition.Tilled;
+            UpdateVisual();
         }
 
         public void Till()
@@ -172,13 +242,13 @@ namespace Farming
             {
                 switch (tileCondition)
                 {
-                    case Condition.Grass: tileRenderer.material = grassMaterial; break;
-                    case Condition.Tilled: tileRenderer.material = tilledMaterial; break;
-                    case Condition.Watered: tileRenderer.material = wateredMaterial; break;
+                    case Condition.Grass:    tileRenderer.material = grassMaterial;   break;
+                    case Condition.Tilled:   tileRenderer.material = tilledMaterial;  break;
+                    case Condition.Watered:  tileRenderer.material = wateredMaterial; break;
+                    case Condition.Planted:  tileRenderer.material = wateredMaterial; break; // reuse watered look under the plant
+                    case Condition.Withered: tileRenderer.material = tilledMaterial;  break;
                 }
             }
-
-            // NEW: keep minimap icon in sync with tile state
             UpdateMinimapVisual();
         }
 
@@ -198,12 +268,24 @@ namespace Farming
 
         public void OnDayPassed()
         {
+            if (activePlant != null)
+            {
+                if (tileCondition != Condition.Watered)
+                {
+                    activePlant.Wither();
+                    tileCondition = Condition.Withered;
+                }
+                activePlant.OnDayPassed();
+                daysSinceLastInteraction++;
+                UpdateVisual();
+                return;
+            }
+
             daysSinceLastInteraction++;
 
-            // After ONE day passes, decay the state
             if (daysSinceLastInteraction >= 1)
             {
-                if (tileCondition == Condition.Watered) tileCondition = Condition.Tilled;
+                if (tileCondition == Condition.Watered)    tileCondition = Condition.Tilled;
                 else if (tileCondition == Condition.Tilled) tileCondition = Condition.Grass;
             }
 

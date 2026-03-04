@@ -12,6 +12,7 @@ namespace Farming
         [SerializeField] private int rows = 4;
         [SerializeField] private int cols = 4;
         [SerializeField] private float tileGap = 0.1f;
+        [SerializeField] private GameObject[] plantPrefabs; // assign your plant prefabs here
         private List<FarmTile> tiles = new List<FarmTile>();
         
         void Start()
@@ -60,8 +61,11 @@ namespace Farming
                     clone = Instantiate(farmTilePrefab, spawnPos, Quaternion.identity);
                     clone.name = "Farm Tile " + count++.ToString();
                     spawnPos.x += clone.transform.localScale.x + tileGap;
-                    clone.transform.parent = transform; // build heirarchy
-                    tiles.Add(clone.GetComponent<FarmTile>()); // for resize/delete
+                    clone.transform.parent = transform;
+                    var tileComp = clone.GetComponent<FarmTile>();
+                    if (tileComp != null && plantPrefabs != null && plantPrefabs.Length > 0)
+                        tileComp.PlantPrefabs = plantPrefabs;
+                    tiles.Add(tileComp);
                 }
                 spawnPos.z += clone.transform.localScale.z + tileGap;
                 spawnPos.x = transform.position.x;
@@ -86,6 +90,8 @@ namespace Farming
             {
                 if (child.gameObject.TryGetComponent<FarmTile>(out var tile))
                 {
+                    if (plantPrefabs != null && plantPrefabs.Length > 0)
+                        tile.PlantPrefabs = plantPrefabs;
                     tiles.Add(tile);
                 }
             }

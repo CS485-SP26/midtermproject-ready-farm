@@ -24,13 +24,12 @@ namespace Farming
         private readonly List<Material> materials = new List<Material>();
 
         private int daysSinceLastInteraction = 0;
-        private Plant activePlant = null; // tracked directly since plant isn't a child of this tile
+        private Plant activePlant = null; 
 
         public Condition GetCondition => tileCondition;
         public int DaysSinceLastInteraction => daysSinceLastInteraction;
         public Plant ActivePlant => activePlant;
 
-        // ===== Minimap Icon Coloring (NEW) =====
         [Header("Minimap Colors")]
         [SerializeField] private Color minimapGrassColor   = new Color(0.10f, 0.60f, 0.10f, 1f);
         [SerializeField] private Color minimapTilledColor  = new Color(0.78f, 0.70f, 0.45f, 1f);
@@ -64,9 +63,6 @@ namespace Farming
             if (tileRenderer == null)
                 tileRenderer = GetComponent<MeshRenderer>();
 
-            Debug.Assert(tileRenderer, "FarmTile requires a MeshRenderer");
-
-            // Cache edge materials once (for highlight emission)
             if (materials.Count == 0)
             {
                 foreach (Transform edge in transform)
@@ -80,28 +76,39 @@ namespace Farming
 
         private void CacheMinimapIcon()
         {
-            // If already assigned manually, keep it
-            if (minimapIconRenderer != null || minimapIconSprite != null)
-                return;
-
-            // Your hierarchy shows "MinimapIcon" under each tile
-            Transform icon = transform.Find("MinimapIcon");
-            if (icon == null) icon = transform.Find("MiniMapIcon"); // fallback spelling
+            if (minimapIconRenderer != null || minimapIconSprite != null) return;
+            Transform icon = transform.Find("MinimapIcon") ?? transform.Find("MiniMapIcon"); 
 
             if (icon == null)
             {
-                // last fallback: look anywhere under this tile
                 minimapIconSprite = GetComponentInChildren<SpriteRenderer>(true);
-                if (minimapIconSprite != null) return;
-
-                minimapIconRenderer = GetComponentInChildren<Renderer>(true);
+                if (minimapIconSprite == null) minimapIconRenderer = GetComponentInChildren<Renderer>(true);
                 return;
             }
 
             minimapIconSprite = icon.GetComponent<SpriteRenderer>();
-            if (minimapIconSprite != null) return;
+            if (minimapIconSprite == null) minimapIconRenderer = icon.GetComponent<Renderer>();
+        }
 
-            minimapIconRenderer = icon.GetComponent<Renderer>();
+        private void UpdateMinimapVisual()
+        {
+            CacheMinimapIcon();
+            Color c = (tileCondition == Condition.Tilled && activePlant != null) ? minimapPlantedColor : GetMinimapColorForCondition(tileCondition);
+
+            if (minimapIconSprite != null)
+            {
+                minimapIconSprite.color = c;
+                return;
+            }
+
+            if (minimapIconRenderer != null)
+            {
+                if (minimapMPB == null) minimapMPB = new MaterialPropertyBlock();
+                minimapIconRenderer.GetPropertyBlock(minimapMPB);
+                minimapMPB.SetColor("_BaseColor", c); 
+                minimapMPB.SetColor("_Color", c); 
+                minimapIconRenderer.SetPropertyBlock(minimapMPB);
+            }
         }
 
         private Color GetMinimapColorForCondition(Condition c)
@@ -116,104 +123,43 @@ namespace Farming
             }
         }
 
-        private void UpdateMinimapVisual()
-        {
-            CacheMinimapIcon();
-
-            Color c = GetMinimapColorForCondition(tileCondition);
-
-            // If it’s a SpriteRenderer icon, set its color directly
-            if (minimapIconSprite != null)
-            {
-                minimapIconSprite.color = c;
-                return;
-            }
-
-            // Otherwise tint the renderer via property block (safe with shared materials)
-            if (minimapIconRenderer == null) return;
-
-            if (minimapMPB == null)
-                minimapMPB = new MaterialPropertyBlock();
-
-            minimapIconRenderer.GetPropertyBlock(minimapMPB);
-
-            // Try common shader color properties
-            minimapMPB.SetColor("_BaseColor", c); // URP Lit/Unlit
-            minimapMPB.SetColor("_Color", c);     // legacy / many shaders
-            minimapMPB.SetColor("_TintColor", c); // some unlit shaders
-
-            minimapIconRenderer.SetPropertyBlock(minimapMPB);
-        }
-
-        public void Interact()
-        {
-            // If a plant is present, forward to plant logic first
-            if (activePlant != null)
-            {
-                if (activePlant.CanHarvest)
-                    Harvest();
-                else
-                    WaterPlant();
-
-                daysSinceLastInteraction = 0;
-                return;
-            }
-
-            // No plant – interact with soil
-            switch (tileCondition)
-            {
-                case Condition.Grass:    Till();      break;
-                case Condition.Tilled:   Water();     break;
-                case Condition.Watered:  PlantSeed(); break;
-                case Condition.Withered: Till();      break;
-            }
-            daysSinceLastInteraction = 0;
-        }
-
         public void PlantSeed()
         {
-            if (plantPrefabs == null || plantPrefabs.Length == 0)
-            {
-                Debug.LogError("FarmTile: No plant prefabs assigned – drag one into the Plant Prefabs array on this tile (or on FarmTileManager).");
-                return;
-            }
+            if (plantPrefabs == null || plantPrefabs.Length == 0) return;
+            if (activePlant != null) return; 
 
             GameObject prefab = plantPrefabs[Random.Range(0, plantPrefabs.Length)];
-            if (prefab == null) { Debug.LogError("FarmTile: Selected plant prefab is null."); return; }
-
-            // Parent to the tile's parent (FarmTileManager) instead of the tile itself,
-            // so the plant is never subject to the tile's non-uniform scale.
-            Transform safeParent = transform.parent != null ? transform.parent : transform;
-            var go = Instantiate(prefab, transform.position, Quaternion.identity, safeParent);
+            
+            var go = Instantiate(prefab, transform.position + Vector3.up * 0.05f, Quaternion.identity);
+    
             activePlant = go.GetComponent<Plant>();
-            if (activePlant != null) activePlant.BeginGrowing();
-            tileCondition = Condition.Planted;
-            daysSinceLastInteraction = 0;
-            UpdateVisual();
-        }
-
-        public void WaterPlant()
-        {
-            tileCondition = Condition.Watered;
-            daysSinceLastInteraction = 0;
-            UpdateVisual();
-            waterAudio?.Play();
+    
+            if (activePlant != null) 
+            {
+                activePlant.BeginGrowing();
+                tileCondition = Condition.Planted;
+                UpdateVisual();
+            }
         }
 
         public void Harvest()
         {
             if (activePlant != null)
             {
+                if (GameManager.Instance != null) GameManager.Instance.currentFunds += 25f; 
                 Destroy(activePlant.gameObject);
                 activePlant = null;
             }
             tileCondition = Condition.Tilled;
+            daysSinceLastInteraction = 0;
             UpdateVisual();
         }
 
         public void Till()
         {
+            if (activePlant != null) { Destroy(activePlant.gameObject); activePlant = null; }
             tileCondition = Condition.Tilled;
+            daysSinceLastInteraction = 0;
             UpdateVisual();
             tillAudio?.Play();
         }
@@ -221,18 +167,15 @@ namespace Farming
         public void Water()
         {
             tileCondition = Condition.Watered;
+            daysSinceLastInteraction = 0;
             UpdateVisual();
             waterAudio?.Play();
         }
 
-        // Apply saved state after scene reload
         public void ApplyState(Condition condition, int daysSince)
         {
             tileCondition = condition;
-            daysSinceLastInteraction = Mathf.Max(0, daysSince);
-
-            CacheRenderers();
-            CacheMinimapIcon();
+            daysSinceLastInteraction = daysSince;
             UpdateVisual();
         }
 
@@ -245,7 +188,7 @@ namespace Farming
                     case Condition.Grass:    tileRenderer.material = grassMaterial;   break;
                     case Condition.Tilled:   tileRenderer.material = tilledMaterial;  break;
                     case Condition.Watered:  tileRenderer.material = wateredMaterial; break;
-                    case Condition.Planted:  tileRenderer.material = wateredMaterial; break; // reuse watered look under the plant
+                    case Condition.Planted:  tileRenderer.material = wateredMaterial; break; 
                     case Condition.Withered: tileRenderer.material = tilledMaterial;  break;
                 }
             }
@@ -257,35 +200,41 @@ namespace Farming
             foreach (Material m in materials)
             {
                 if (m == null) continue;
-
                 if (active) m.EnableKeyword("_EMISSION");
                 else m.DisableKeyword("_EMISSION");
             }
-
-            if (active && stepAudio != null)
-                stepAudio.Play();
         }
 
         public void OnDayPassed()
         {
-            if (activePlant != null)
+            if (activePlant != null && tileCondition != Condition.Withered)
             {
-                if (tileCondition != Condition.Watered)
+                // If the tile isn't watered, the plant withers
+                if (tileCondition != Condition.Watered && tileCondition != Condition.Planted)
                 {
                     activePlant.Wither();
                     tileCondition = Condition.Withered;
                 }
-                activePlant.OnDayPassed();
-                daysSinceLastInteraction++;
+                else
+                {
+                    // Successful growth
+                    activePlant.OnDayPassed();
+                    
+                    activePlant.UpdateVisuals(); 
+                    
+                    tileCondition = Condition.Planted; 
+                }
+                
+                daysSinceLastInteraction = 0;
                 UpdateVisual();
-                return;
+                return; 
             }
 
             daysSinceLastInteraction++;
 
             if (daysSinceLastInteraction >= 1)
             {
-                if (tileCondition == Condition.Watered)    tileCondition = Condition.Tilled;
+                if (tileCondition == Condition.Watered) tileCondition = Condition.Tilled;
                 else if (tileCondition == Condition.Tilled) tileCondition = Condition.Grass;
             }
 

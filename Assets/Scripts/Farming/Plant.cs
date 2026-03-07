@@ -7,87 +7,106 @@ namespace Farming
         public enum GrowthState { NoPlant, Planted, Growing, Mature, Withered }
 
         [Header("Configuration")]
-        [Tooltip("Days before the plant starts visibly growing.")]
-        [SerializeField] private int daysToGrow   = 1;
-        [Tooltip("Total days until the plant is mature and ready to harvest.")]
-        [SerializeField] private int daysToMature = 3;
+        [SerializeField] private int seedDays = 1;    // 1 day as a seed
+        [SerializeField] private int growingDays = 1; // 1 day growing
+        [SerializeField] private int matureDays = 3;  // 3 days mature before withering
 
         [Header("State")]
-        [SerializeField] private GrowthState state           = GrowthState.NoPlant;
-        [SerializeField] private int         daysSincePlanted = 0;
+        public GrowthState state = GrowthState.NoPlant;
+        public int daysSincePlanted = 0;
 
         public GrowthState CurrentState => state;
         public bool IsWithered => state == GrowthState.Withered;
         public bool CanHarvest => state == GrowthState.Mature;
 
         [Header("Visuals")]
-        [Tooltip("Shown when the tile has no plant (cleared / just-harvested).")]
         [SerializeField] private GameObject noPlantVisual;
-        [Tooltip("Shown immediately after a seed is placed.")]
         [SerializeField] private GameObject plantedVisual;
-        [Tooltip("Shown while the plant is actively growing.")]
         [SerializeField] private GameObject growingVisual;
-        [Tooltip("Shown when the plant is ready to harvest.")]
         [SerializeField] private GameObject matureVisual;
-        [Tooltip("Shown when the plant has died from lack of water.")]
         [SerializeField] private GameObject witheredVisual;
 
-        private void Start() => UpdateVisuals();
-
-        /// <summary>Recursively resets any flattened scales in child transforms.</summary>
-        private void ResetChildScales()
+        private void Awake()
         {
-            foreach (Transform child in GetComponentsInChildren<Transform>())
+            ResetChildTransforms();
+        }
+
+        private void Start() 
+        {
+            UpdateVisuals();
+        }
+
+        public void ResetChildTransforms()
+        {
+            GameObject[] allVisuals = { noPlantVisual, plantedVisual, growingVisual, matureVisual, witheredVisual };
+            
+            foreach (GameObject visual in allVisuals)
             {
-                if (child != transform)
+                if (visual != null)
                 {
-                    child.localScale = Vector3.one;
+                    // Sets local Y to 0.2 so they aren't buried
+                    visual.transform.localPosition = new Vector3(0, 0.2f, 0); 
+                    visual.transform.localScale = Vector3.one;
                 }
             }
         }
 
-        /// <summary>Call this after instantiating the prefab to move out of NoPlant.</summary>
         public void BeginGrowing()
         {
-            ResetChildScales();
-            state            = GrowthState.Planted;
+            state = GrowthState.Planted;
             daysSincePlanted = 0;
             UpdateVisuals();
         }
 
-        /// <summary>Called by FarmTile.OnDayPassed each in-game day.</summary>
-        public void OnDayPassed()
+        public void SetGrowthState(GrowthState newState, int daysSince)
         {
-            if (state == GrowthState.Withered || state == GrowthState.NoPlant) return;
-
-            daysSincePlanted++;
-
-            if      (daysSincePlanted >= daysToMature) state = GrowthState.Mature;
-            else if (daysSincePlanted >= daysToGrow)   state = GrowthState.Growing;
-
+            state = newState;
+            daysSincePlanted = daysSince;
             UpdateVisuals();
         }
 
-        /// <summary>Called by FarmTile when the soil dries out overnight.</summary>
+        public void ResetPlant()
+        {
+            state = GrowthState.NoPlant;
+            daysSincePlanted = 0;
+            UpdateVisuals();
+        }
+
         public void Wither()
         {
             state = GrowthState.Withered;
             UpdateVisuals();
         }
 
-        public void ResetPlant()
+        public void OnDayPassed()
         {
-            state            = GrowthState.NoPlant;
-            daysSincePlanted = 0;
+            if (state == GrowthState.Withered || state == GrowthState.NoPlant) return;
+
+            daysSincePlanted++;
+
+            // Precise thresholds
+            int growThreshold = seedDays;                              // Day 1
+            int matureThreshold = seedDays + growingDays;              // Day 2
+            int witherThreshold = seedDays + growingDays + matureDays; // Day 5
+
+            if (daysSincePlanted >= witherThreshold)
+                state = GrowthState.Withered;
+            else if (daysSincePlanted >= matureThreshold)
+                state = GrowthState.Mature;
+            else if (daysSincePlanted >= growThreshold)
+                state = GrowthState.Growing;
+            else
+                state = GrowthState.Planted;
+
             UpdateVisuals();
         }
 
-        private void UpdateVisuals()
+        public void UpdateVisuals()
         {
-            if (noPlantVisual)  noPlantVisual.SetActive(state  == GrowthState.NoPlant);
-            if (plantedVisual)  plantedVisual.SetActive(state  == GrowthState.Planted);
-            if (growingVisual)  growingVisual.SetActive(state  == GrowthState.Growing);
-            if (matureVisual)   matureVisual.SetActive(state   == GrowthState.Mature);
+            if (noPlantVisual) noPlantVisual.SetActive(state == GrowthState.NoPlant);
+            if (plantedVisual) plantedVisual.SetActive(state == GrowthState.Planted);
+            if (growingVisual) growingVisual.SetActive(state == GrowthState.Growing);
+            if (matureVisual) matureVisual.SetActive(state == GrowthState.Mature);
             if (witheredVisual) witheredVisual.SetActive(state == GrowthState.Withered);
         }
     }

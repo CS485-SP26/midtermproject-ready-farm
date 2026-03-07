@@ -17,8 +17,8 @@ namespace Farming
 
         [Header("Durations")]
         [SerializeField] private Character.AnimatedController animatedController;
-        [SerializeField] private float hoeDuration = 5f;
-        [SerializeField] private float waterDuration = 5.5f;
+        [SerializeField] private float hoeDuration = 2.0f; 
+        [SerializeField] private float waterDuration = 2.0f;
 
         private bool fundsAwarded = false;
 
@@ -26,6 +26,9 @@ namespace Farming
         {
             HideAllTools();
             if (winMessage) winMessage.SetActive(false);
+            
+            UpdateWaterUI();
+            UpdateEnergyUI();
         }
 
         private void Update()
@@ -38,100 +41,93 @@ namespace Farming
         public void InteractWithTile(FarmTile tile)
         {
             if (tile == null) return;
-            CancelInvoke(nameof(StopFarmingAction));
 
-            // ── If there's a plant on the tile, handle it first ──────────────
+            CancelInvoke(nameof(StopFarmingAction));
+            HideAllTools(); 
+
+            float energyCost = 10f;
+            float waterCost = 15f;
+
             var plant = tile.ActivePlant;
+            FarmTile.Condition condition = tile.GetCondition;
+
+            // 1. TILLING A PLANTED TILE
             if (plant != null)
             {
-                if (plant.CanHarvest)
+                if (GameManager.Instance.currentEnergy >= energyCost)
                 {
-                    if (GameManager.Instance.currentEnergy >= 5f)
+                    GameManager.Instance.currentEnergy -= energyCost;
+                    gardenHoe.SetActive(true);
+                    animatedController.SetTrigger("Till");
+
+                    if (plant.CanHarvest)
                     {
-                        GameManager.Instance.currentEnergy -= 5f;
-                        gardenHoe.SetActive(true);
-                        animatedController.SetTrigger("Till");
-                        tile.Interact(); // calls Harvest()
-                        GameManager.Instance.currentFunds += 25f;
-                        Invoke(nameof(StopFarmingAction), hoeDuration);
+                        GameManager.Instance.harvestedCrops++;
+                        Debug.Log("Harvested! Total: " + GameManager.Instance.harvestedCrops);
                     }
-                    else { Debug.Log("Not enough energy to harvest!"); }
-                }
-                else
-                {
-                    if (GameManager.Instance.currentWater >= 10f)
+                    else
                     {
-                        waterCan.SetActive(true);
-                        animatedController.SetTrigger("Water");
-                        tile.Interact(); // calls WaterPlant()
-                        GameManager.Instance.currentWater -= 10f;
-                        UpdateWaterUI();
-                        Invoke(nameof(StopFarmingAction), waterDuration);
+                        Debug.Log("Plant destroyed before maturity.");
                     }
-                    else { Debug.Log("Not enough water to water the plant!"); }
+
+                    Destroy(plant.gameObject);
+                    tile.ApplyState(FarmTile.Condition.Tilled, 0);
+                    Invoke(nameof(StopFarmingAction), hoeDuration);
                 }
                 return;
             }
 
-            // ── No plant – interact with bare soil ────────────────────────────
-            FarmTile.Condition condition = tile.GetCondition;
-
-            if (condition == FarmTile.Condition.Grass)
+            // 2. WATERING (Tilled or Planted soil)
+            if ((condition == FarmTile.Condition.Tilled || condition == FarmTile.Condition.Planted) && condition != FarmTile.Condition.Watered)
             {
-                if (GameManager.Instance.currentEnergy >= 10f)
+                if (GameManager.Instance.currentWater >= waterCost)
                 {
-                    GameManager.Instance.currentEnergy -= 10f;
-                    gardenHoe.SetActive(true);
-                    animatedController.SetTrigger("Till");
-                    tile.Interact();
-                    Invoke(nameof(StopFarmingAction), hoeDuration);
-                }
-                else { Debug.Log("Not enough energy to till the soil!"); }
-            }
-            else if (condition == FarmTile.Condition.Tilled)
-            {
-                if (GameManager.Instance.currentWater >= 10f)
-                {
+                    GameManager.Instance.currentWater -= waterCost;
                     waterCan.SetActive(true);
                     animatedController.SetTrigger("Water");
-                    tile.Interact();
-                    GameManager.Instance.currentWater -= 10f;
-                    UpdateWaterUI();
+                    tile.ApplyState(FarmTile.Condition.Watered, 0);
                     Invoke(nameof(StopFarmingAction), waterDuration);
                 }
-                else { Debug.Log("Not enough water to water the soil!"); }
+                else { Debug.Log("Out of water!"); }
+                return;
             }
-            else if (condition == FarmTile.Condition.Watered)
+
+            // 3. PLANTING (Tilled or Watered, no plant present)
+            if ((condition == FarmTile.Condition.Tilled || condition == FarmTile.Condition.Watered) && plant == null)
             {
-                // Plant a seed
-                if (GameManager.Instance.currentEnergy >= 10f)
+                if (GameManager.Instance.seedCount > 0)
                 {
-                    GameManager.Instance.currentEnergy -= 10f;
-                    gardenHoe.SetActive(true);
+                    GameManager.Instance.seedCount--;
+                    GameManager.Instance.currentEnergy -= energyCost;
+                    
+                    HideAllTools(); 
                     animatedController.SetTrigger("Till");
-                    tile.Interact(); // calls PlantSeed()
+                    
+                    tile.PlantSeed(); 
                     Invoke(nameof(StopFarmingAction), hoeDuration);
                 }
-                else { Debug.Log("Not enough energy to plant a seed!"); }
+                else { Debug.Log("No seeds left!"); }
+                return;
             }
-            else if (condition == FarmTile.Condition.Withered)
+
+            // 4. TILLING (Grass or Withered, no plant)
+            if (condition == FarmTile.Condition.Grass || condition == FarmTile.Condition.Withered)
             {
-                // Till over the dead plant remnants
-                if (GameManager.Instance.currentEnergy >= 10f)
+                if (GameManager.Instance.currentEnergy >= energyCost)
                 {
-                    GameManager.Instance.currentEnergy -= 10f;
+                    GameManager.Instance.currentEnergy -= energyCost;
                     gardenHoe.SetActive(true);
                     animatedController.SetTrigger("Till");
-                    tile.Interact();
+                    tile.ApplyState(FarmTile.Condition.Tilled, 0);
                     Invoke(nameof(StopFarmingAction), hoeDuration);
                 }
-                else { Debug.Log("Not enough energy to till the soil!"); }
+                return;
             }
         }
 
         private void CheckWinCondition()
         {
-            FarmTile[] allTiles = FindObjectsByType<FarmTile>(FindObjectsSortMode.None);
+            FarmTile[] allTiles = Object.FindObjectsByType<FarmTile>(FindObjectsSortMode.None);
             if (allTiles.Length == 0) return;
 
             bool allWatered = true;
@@ -150,7 +146,6 @@ namespace Farming
                 if (winMessage) winMessage.SetActive(true);
                 GameManager.Instance.currentFunds += 100f; 
                 fundsAwarded = true; 
-                Debug.Log("Win Condition Met: Funds Awarded!");
             }
         }
 
@@ -163,18 +158,19 @@ namespace Farming
         {
             if (gardenHoe) gardenHoe.SetActive(false);
             if (waterCan) waterCan.SetActive(false);
+            
+            var player = Object.FindAnyObjectByType<Character.PlayerController>();
+            if (player != null) player.SetTool(0);
         }
 
         private void UpdateWaterUI()
         {
-            // Syncs the UI bar with the GameManager's persistent water level
             if (waterFillImage != null && GameManager.Instance != null)
                 waterFillImage.fillAmount = GameManager.Instance.currentWater / GameManager.Instance.maxWater;
         }
 
         private void UpdateEnergyUI()
         {
-            // Syncs the UI bar with the GameManager's persistent energy level
             if (energyFillImage != null && GameManager.Instance != null)
                 energyFillImage.fillAmount = GameManager.Instance.currentEnergy / GameManager.Instance.maxEnergy;
         }

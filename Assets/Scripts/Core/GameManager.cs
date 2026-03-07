@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using Farming;
+using Environment;
 
 public class GameManager : MonoBehaviour
 {
@@ -16,7 +17,9 @@ public class GameManager : MonoBehaviour
     public float maxEnergy = 100f;
     public int seedCount = 5;
 
-    // ===== Day persistence (NEW) =====
+    [Header("Inventory")]
+    public int harvestedCrops = 0;
+
     [Header("Day State")]
     public int savedDay = 1;
     public float savedDayProgressSeconds = 0f;
@@ -31,6 +34,8 @@ public class GameManager : MonoBehaviour
         public Vector3 localPosition;
         public FarmTile.Condition condition;
         public int daysSinceLastInteraction;
+        public Plant.GrowthState plantState;
+        public int plantDaysSincePlanted;
     }
 
     private readonly Dictionary<string, FarmTileState> savedTilesByName = new Dictionary<string, FarmTileState>();
@@ -40,14 +45,13 @@ public class GameManager : MonoBehaviour
 
     private void Awake()
     {
-        // Singleton pattern
         if (Instance != null && Instance != this)
         {
             Destroy(gameObject);
             return;
         }
         Instance = this;
-        DontDestroyOnLoad(gameObject);
+        DontDestroyOnLoad(gameObject); // GameManager persists across ALL scenes
     }
 
     private void OnEnable()
@@ -60,16 +64,26 @@ public class GameManager : MonoBehaviour
         SceneManager.sceneLoaded -= OnSceneLoaded;
     }
 
+    private void Update()
+    {
+        if (currentEnergy < maxEnergy)
+        {
+            currentEnergy = Mathf.MoveTowards(currentEnergy, maxEnergy, Time.deltaTime * 2f);
+        }
+    }
+
     public void LoadScene(string sceneName)
     {
-        // If we are leaving the farm, snapshot day + tile states first
+        // Save farm state before leaving the farm scene
         Scene active = SceneManager.GetActiveScene();
         if (active.name == FarmSceneName)
         {
-            SaveDayState();     // NEW
+            SaveDayState();
             SaveFarmTiles();
         }
 
+        // harvestedCrops, seedCount, currentFunds etc. are all fields on this
+        // DontDestroyOnLoad object so they survive the scene load automatically.
         SceneManager.LoadScene(sceneName);
     }
 
@@ -77,7 +91,6 @@ public class GameManager : MonoBehaviour
     {
         if (scene.name == FarmSceneName && (hasSavedFarmTiles || hasSavedDayState))
         {
-            // sceneLoaded happens before Start on scene objects, so wait a frame
             StartCoroutine(RestoreFarmStateNextFrame());
         }
     }
@@ -102,8 +115,6 @@ public class GameManager : MonoBehaviour
 #endif
     }
 
-    // ===== Day Save/Restore (NEW) =====
-
     private void SaveDayState()
     {
         var dc = FindDayController();
@@ -114,7 +125,7 @@ public class GameManager : MonoBehaviour
         hasSavedDayState = true;
     }
 
-    // ===== Tile Save/Restore =====
+    // ===== Tile & Plant Save/Restore =====
 
     public void SaveFarmTiles()
     {
@@ -134,6 +145,16 @@ public class GameManager : MonoBehaviour
                 daysSinceLastInteraction = t.DaysSinceLastInteraction
             };
 
+            if (t.ActivePlant != null)
+            {
+                state.plantState = t.ActivePlant.CurrentState;
+                state.plantDaysSincePlanted = t.ActivePlant.daysSincePlanted;
+            }
+            else
+            {
+                state.plantState = Plant.GrowthState.NoPlant;
+            }
+
             savedTilesByName[state.name] = state;
         }
 
@@ -144,14 +165,10 @@ public class GameManager : MonoBehaviour
     {
         yield return null;
 
-        // 1) Restore DayController first (NEW)
         var dc = FindDayController();
         if (dc != null && hasSavedDayState)
-        {
             dc.ApplySavedState(savedDay, savedDayProgressSeconds);
-        }
 
-        // 2) Restore Tiles
         if (!hasSavedFarmTiles) yield break;
 
         FarmTile[] tiles = FindAllFarmTiles();
@@ -164,7 +181,6 @@ public class GameManager : MonoBehaviour
             FarmTileState state = pair.Value;
             FarmTile match = null;
 
-            // (A) Match by name first
             for (int i = 0; i < tiles.Length; i++)
             {
                 if (tiles[i] != null && tiles[i].gameObject.name == state.name)
@@ -174,7 +190,6 @@ public class GameManager : MonoBehaviour
                 }
             }
 
-            // (B) Fallback: match by local position
             if (match == null)
             {
                 float best = float.PositiveInfinity;
@@ -184,28 +199,25 @@ public class GameManager : MonoBehaviour
                     if (t == null || used.Contains(t)) continue;
 
                     float d = (t.transform.localPosition - state.localPosition).sqrMagnitude;
-                    if (d < best)
-                    {
-                        best = d;
-                        match = t;
-                    }
+                    if (d < best) { best = d; match = t; }
                 }
-
-                // Reject if it’s not actually the same location
-                if (match != null && best > 0.0001f)
-                    match = null;
+                if (match != null && best > 0.0001f) match = null;
             }
 
             if (match != null)
             {
                 match.transform.localPosition = state.localPosition;
                 match.ApplyState(state.condition, state.daysSinceLastInteraction);
+
+                if (state.plantState != Plant.GrowthState.NoPlant && match.ActivePlant != null)
+                    match.ActivePlant.SetGrowthState(state.plantState, state.plantDaysSincePlanted);
+
                 used.Add(match);
             }
         }
     }
 
-    // ===== Store / inventory logic =====
+    // ===== Store / Selling logic =====
 
     public void BuySeeds(int amount, float cost)
     {
@@ -218,6 +230,17 @@ public class GameManager : MonoBehaviour
         else
         {
             Debug.Log("Not enough money!");
+        }
+    }
+
+    public void SellAllCrops(float pricePerCrop)
+    {
+        if (harvestedCrops > 0)
+        {
+            float earnings = harvestedCrops * pricePerCrop;
+            currentFunds += earnings;
+            Debug.Log($"Sold {harvestedCrops} crops for ${earnings}");
+            harvestedCrops = 0;
         }
     }
 

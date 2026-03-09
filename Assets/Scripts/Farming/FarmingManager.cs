@@ -11,13 +11,11 @@ namespace Farming
         [SerializeField] private GameObject waterCan;
         
         [Header("UI & Feedback")]
-        [SerializeField] private Image waterFillImage;
-        [SerializeField] private Image energyFillImage;
         [SerializeField] private GameObject winMessage; 
 
         [Header("Durations")]
         [SerializeField] private Character.AnimatedController animatedController;
-        [SerializeField] private float hoeDuration = 2.0f; 
+        [SerializeField] private float hoeDuration   = 2.0f; 
         [SerializeField] private float waterDuration = 2.0f;
 
         private bool fundsAwarded = false;
@@ -26,15 +24,16 @@ namespace Farming
         {
             HideAllTools();
             if (winMessage) winMessage.SetActive(false);
-            
-            UpdateWaterUI();
-            UpdateEnergyUI();
+
+            // Reset harvestedCrops to 0 on scene start to prevent stale values
+            if (GameManager.Instance != null)
+            {
+                Debug.Log($"[FarmingManager] Start — harvestedCrops = {GameManager.Instance.harvestedCrops}");
+            }
         }
 
         private void Update()
         {
-            UpdateWaterUI();
-            UpdateEnergyUI();
             CheckWinCondition();
         }
 
@@ -43,10 +42,10 @@ namespace Farming
             if (tile == null) return;
 
             CancelInvoke(nameof(StopFarmingAction));
-            HideAllTools(); 
+            HideAllTools();
 
             float energyCost = 10f;
-            float waterCost = 15f;
+            float waterCost  = 15f;
 
             var plant = tile.ActivePlant;
             FarmTile.Condition condition = tile.GetCondition;
@@ -62,8 +61,12 @@ namespace Farming
 
                     if (plant.CanHarvest)
                     {
+                        Debug.Log($"[FarmingManager] Harvesting — before: {GameManager.Instance.harvestedCrops}");
                         GameManager.Instance.harvestedCrops++;
-                        Debug.Log("Harvested! Total: " + GameManager.Instance.harvestedCrops);
+                        Debug.Log($"[FarmingManager] Harvested — after: {GameManager.Instance.harvestedCrops}");
+
+                        if (RewardManager.Instance != null)
+                            RewardManager.Instance.CheckMilestones();
                     }
                     else
                     {
@@ -77,7 +80,7 @@ namespace Farming
                 return;
             }
 
-            // 2. WATERING (Tilled or Planted soil)
+            // 2. WATERING
             if ((condition == FarmTile.Condition.Tilled || condition == FarmTile.Condition.Planted) && condition != FarmTile.Condition.Watered)
             {
                 if (GameManager.Instance.currentWater >= waterCost)
@@ -92,25 +95,23 @@ namespace Farming
                 return;
             }
 
-            // 3. PLANTING (Tilled or Watered, no plant present)
+            // 3. PLANTING
             if ((condition == FarmTile.Condition.Tilled || condition == FarmTile.Condition.Watered) && plant == null)
             {
                 if (GameManager.Instance.seedCount > 0)
                 {
                     GameManager.Instance.seedCount--;
                     GameManager.Instance.currentEnergy -= energyCost;
-                    
-                    HideAllTools(); 
+                    HideAllTools();
                     animatedController.SetTrigger("Till");
-                    
-                    tile.PlantSeed(); 
+                    tile.PlantSeed();
                     Invoke(nameof(StopFarmingAction), hoeDuration);
                 }
                 else { Debug.Log("No seeds left!"); }
                 return;
             }
 
-            // 4. TILLING (Grass or Withered, no plant)
+            // 4. TILLING BARE GROUND
             if (condition == FarmTile.Condition.Grass || condition == FarmTile.Condition.Withered)
             {
                 if (GameManager.Instance.currentEnergy >= energyCost)
@@ -144,35 +145,22 @@ namespace Farming
             if (allWatered && !fundsAwarded)
             {
                 if (winMessage) winMessage.SetActive(true);
-                GameManager.Instance.currentFunds += 100f; 
-                fundsAwarded = true; 
+                GameManager.Instance.currentFunds += 100f;
+                fundsAwarded = true;
+
+                if (RewardManager.Instance != null)
+                    RewardManager.Instance.OnAllTilesWatered();
             }
         }
 
-        private void StopFarmingAction()
-        {
-            HideAllTools();
-        }
+        private void StopFarmingAction() => HideAllTools();
 
         public void HideAllTools()
         {
             if (gardenHoe) gardenHoe.SetActive(false);
-            if (waterCan) waterCan.SetActive(false);
-            
+            if (waterCan)  waterCan.SetActive(false);
             var player = Object.FindAnyObjectByType<Character.PlayerController>();
             if (player != null) player.SetTool(0);
-        }
-
-        private void UpdateWaterUI()
-        {
-            if (waterFillImage != null && GameManager.Instance != null)
-                waterFillImage.fillAmount = GameManager.Instance.currentWater / GameManager.Instance.maxWater;
-        }
-
-        private void UpdateEnergyUI()
-        {
-            if (energyFillImage != null && GameManager.Instance != null)
-                energyFillImage.fillAmount = GameManager.Instance.currentEnergy / GameManager.Instance.maxEnergy;
         }
     }
 }

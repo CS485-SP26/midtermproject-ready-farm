@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using Environment;
 
 namespace Farming
 {
@@ -24,7 +25,7 @@ namespace Farming
         private readonly List<Material> materials = new List<Material>();
 
         private int daysSinceLastInteraction = 0;
-        private Plant activePlant = null; 
+        private Plant activePlant = null;
 
         public Condition GetCondition => tileCondition;
         public int DaysSinceLastInteraction => daysSinceLastInteraction;
@@ -77,7 +78,7 @@ namespace Farming
         private void CacheMinimapIcon()
         {
             if (minimapIconRenderer != null || minimapIconSprite != null) return;
-            Transform icon = transform.Find("MinimapIcon") ?? transform.Find("MiniMapIcon"); 
+            Transform icon = transform.Find("MinimapIcon") ?? transform.Find("MiniMapIcon");
 
             if (icon == null)
             {
@@ -105,8 +106,8 @@ namespace Farming
             {
                 if (minimapMPB == null) minimapMPB = new MaterialPropertyBlock();
                 minimapIconRenderer.GetPropertyBlock(minimapMPB);
-                minimapMPB.SetColor("_BaseColor", c); 
-                minimapMPB.SetColor("_Color", c); 
+                minimapMPB.SetColor("_BaseColor", c);
+                minimapMPB.SetColor("_Color", c);
                 minimapIconRenderer.SetPropertyBlock(minimapMPB);
             }
         }
@@ -126,15 +127,13 @@ namespace Farming
         public void PlantSeed()
         {
             if (plantPrefabs == null || plantPrefabs.Length == 0) return;
-            if (activePlant != null) return; 
+            if (activePlant != null) return;
 
             GameObject prefab = plantPrefabs[Random.Range(0, plantPrefabs.Length)];
-            
             var go = Instantiate(prefab, transform.position + Vector3.up * 0.05f, Quaternion.identity);
-    
             activePlant = go.GetComponent<Plant>();
-    
-            if (activePlant != null) 
+
+            if (activePlant != null)
             {
                 activePlant.BeginGrowing();
                 tileCondition = Condition.Planted;
@@ -146,7 +145,7 @@ namespace Farming
         {
             if (activePlant != null)
             {
-                if (GameManager.Instance != null) GameManager.Instance.currentFunds += 25f; 
+                if (GameManager.Instance != null) GameManager.Instance.currentFunds += 25f;
                 Destroy(activePlant.gameObject);
                 activePlant = null;
             }
@@ -188,7 +187,7 @@ namespace Farming
                     case Condition.Grass:    tileRenderer.material = grassMaterial;   break;
                     case Condition.Tilled:   tileRenderer.material = tilledMaterial;  break;
                     case Condition.Watered:  tileRenderer.material = wateredMaterial; break;
-                    case Condition.Planted:  tileRenderer.material = wateredMaterial; break; 
+                    case Condition.Planted:  tileRenderer.material = wateredMaterial; break;
                     case Condition.Withered: tileRenderer.material = tilledMaterial;  break;
                 }
             }
@@ -209,7 +208,14 @@ namespace Farming
         {
             if (activePlant != null && tileCondition != Condition.Withered)
             {
-                // If the tile isn't watered, the plant withers
+                // ── WINTER: plants are frozen, no growth at all ──────────────
+                var seasonManager = Object.FindFirstObjectByType<SeasonManager>();
+                if (seasonManager != null && seasonManager.CurrentSeason == SeasonManager.Season.Winter)
+                {
+                    // Do nothing — plants don't grow or wither in winter
+                    return;
+                }
+
                 if (tileCondition != Condition.Watered && tileCondition != Condition.Planted)
                 {
                     activePlant.Wither();
@@ -217,17 +223,14 @@ namespace Farming
                 }
                 else
                 {
-                    // Successful growth
                     activePlant.OnDayPassed();
-                    
-                    activePlant.UpdateVisuals(); 
-                    
-                    tileCondition = Condition.Planted; 
+                    activePlant.UpdateVisuals();
+                    tileCondition = Condition.Planted;
                 }
-                
+
                 daysSinceLastInteraction = 0;
                 UpdateVisual();
-                return; 
+                return;
             }
 
             daysSinceLastInteraction++;
